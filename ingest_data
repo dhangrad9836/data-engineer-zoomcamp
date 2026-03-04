@@ -46,37 +46,23 @@ def ingest_data(
         chunksize: int = 100000,
 ) -> None:
     """
-    Download CSV/Parquet data and ingest into PostgreSQL
+    Download CSV data and ingest into PostgreSQL
 
     Args:
-        url: URL or path to CSV/Parquet file
+        url: URL of CSV file to download
         engine: SQLAlchemy database engine
         target_table: Name of table to create/replace
-        chunksize: Number of rows per chunk (for CSV only)
+        chunksize: Number of rows per chunk
     """
     ext = os.path.splitext(url)[1]
     
     if ext == ".parquet":
-        # Parquet: load all at once (already compressed/efficient)
-        print("Loading parquet file...")
-        df = pd.read_parquet(url)
-        
-        # Create table and insert all data
-        df.to_sql(
-            name=target_table,
-            con=engine,
-            if_exists="replace",
-            index=False
-        )
-        
-        print(f"✅ Table '{target_table}' created")
-        print(f"✅ Inserted {len(df):,} rows")
-        print(f"🎉 Done ingesting to '{target_table}'!")
-        
+        df_iter = pd.read_parquet(url)
+        df_iter = [df_iter] #makes it iterable
     else:
-        # CSV: load in chunks
+        
         try:
-            # Try with custom dtypes for taxi data
+            # Create iterator for chunked reading
             df_iter = pd.read_csv(
                 url,
                 dtype=dtype,
@@ -84,42 +70,42 @@ def ingest_data(
                 iterator=True,
                 chunksize=chunksize
             )
+            # if the other urls that we are ingesting don't include dtype, or parse_dates then just ingest 'as is' ..since those are for cleaning
         except Exception:
-            # Fallback: load without dtypes (for zones, other data)
             df_iter = pd.read_csv(
                 url,
                 iterator=True,
                 chunksize=chunksize
             )
 
-        # Get first chunk
-        first_chunk = next(df_iter)
+    # Get first chunk
+    first_chunk = next(df_iter)
 
-        # Create table schema (no data)
-        first_chunk.head(0).to_sql(
-            name=target_table,
-            con=engine,
-            if_exists="replace"
-        )
-        print(f"✅ Table '{target_table}' created")
+    # Create table schema (no data)
+    first_chunk.head(0).to_sql(
+        name=target_table,
+        con=engine,
+        if_exists="replace"
+    )
+    print(f"✅ Table '{target_table}' created")
 
-        # Insert first chunk
-        first_chunk.to_sql(
+    # Insert first chunk
+    first_chunk.to_sql(
+        name=target_table,
+        con=engine,
+        if_exists="append"
+    )
+    print(f"✅ Inserted first chunk: {len(first_chunk):,} rows")
+
+    # Insert remaining chunks with progress bar
+    for df_chunk in tqdm(df_iter, desc="Loading chunks"):
+        df_chunk.to_sql(
             name=target_table,
             con=engine,
             if_exists="append"
         )
-        print(f"✅ Inserted first chunk: {len(first_chunk):,} rows")
 
-        # Insert remaining chunks with progress bar
-        for df_chunk in tqdm(df_iter, desc="Loading chunks"):
-            df_chunk.to_sql(
-                name=target_table,
-                con=engine,
-                if_exists="append"
-            )
-
-        print(f"🎉 Done ingesting to '{target_table}'!")
+    print(f"🎉 Done ingesting to '{target_table}'!")
 
 
 @click.command()
