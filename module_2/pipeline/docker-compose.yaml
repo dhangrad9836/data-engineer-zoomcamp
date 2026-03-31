@@ -56,7 +56,7 @@ services:
     # To run Kestra in a rootless mode in production, see: https://kestra.io/docs/installation/podman-compose
     user: "root"
     command: server standalone
-    env_file: .env_encoded        # ← ADD THIS LINE
+    env_file: .env_encoded        # ← ADD THIS LINE for the GCP key credentials
     volumes:
       - kestra_data:/app/storage
       - /var/run/docker.sock:/var/run/docker.sock
@@ -82,6 +82,11 @@ services:
               basePath: "/app/storage"
           queue:
             type: postgres
+          ai:
+            type: gemini
+            gemini:
+              model-name: gemini-2.5-flash
+              api-key: ${GEMINI_API_KEY}
           tasks:
             tmpDir:
               path: /tmp/kestra-wd/tmp
